@@ -29,6 +29,43 @@ function getSession(token) {
 
 function logout(token) { CacheService.getScriptCache().remove('session:' + token); return { ok: true }; }
 
+/** Lee únicamente las disponibilidades cuyo campo Observaciones está vacío. */
+function getPendingAvailabilities(token) {
+  requireAdministrator_(token);
+  const source = getAvailabilitySheet_();
+  const range = source.getDataRange();
+  const display = range.getDisplayValues();
+  const columns = columnMap_(display.shift());
+  const imported = getImportedSourceKeys_();
+  return display.map((row, index) => {
+    const sourceKey = sourceKey_(row, columns);
+    return {
+      sourceKey: sourceKey,
+      sourceRow: index + 2,
+      timestamp: row[columns['Marca temporal']],
+      document: row[columns['Escriba su documento de identidad']],
+      employee: row[columns.Colaborador],
+      availabilityStart: row[columns['Fecha Inicio Disponibilidad']],
+      availabilityEnd: row[columns['Fecha Fin Disponibilidad']],
+      historicalSuggestedDate: row[columns['Fecha para disfrute compensatorio']],
+      alreadyImported: imported.has(sourceKey),
+      pending: !String(row[columns.Observaciones] || '').trim()
+    };
+  }).filter(item => item.pending && !item.alreadyImported);
+}
+
+/** Crea compensatorios sin modificar la pestaña histórica de respuestas. */
+function importPendingAvailabilities(token, sourceKeys) {
+  requireAdministrator_(token);
+  const requested = new Set((sourceKeys || []).map(String));
+  const selected = getPendingAvailabilities(token).filter(item => requested.has(item.sourceKey));
+  if (!selected.length) return { ok: true, imported: 0 };
+  const destination = getCompensationsSheet_();
+  const rows = selected.map(item => [Utilities.getUuid(), item.sourceKey, item.sourceRow, item.document, item.employee, item.availabilityStart, item.availabilityEnd, item.historicalSuggestedDate, '', 'Pendiente de aprobación', '', '', new Date()]);
+  destination.getRange(destination.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+  return { ok: true, imported: rows.length };
+}
+
 function findUser_(documentNumber) {
   const sheet = SpreadsheetApp.openById(getSpreadsheetId_()).getSheetByName('Usuarios');
   if (!sheet) throw new Error('No existe la hoja Usuarios.');
@@ -38,6 +75,46 @@ function findUser_(documentNumber) {
   const row = rows.find(values => values[index.Documento] === documentNumber);
   if (!row) return null;
   return { document: row[index.Documento], name: row[index.Nombre], role: row[index.Rol], pinHash: row[index.PIN_HASH], salt: row[index.PIN_SALT], active: String(row[index.Activo]).toLowerCase() === 'si', mustChangePin: String(row[index.CAMBIAR_PIN]).toLowerCase() === 'si' };
+}
+
+function requireAdministrator_(token) {
+  const session = getSession(token);
+  if (!session.ok || !['Administrador', 'Junta directiva'].includes(session.user.role)) throw new Error('No autorizado.');
+  return session.user;
+}
+
+function getAvailabilitySheet_() {
+  const name = PropertiesService.getScriptProperties().getProperty('AVAILABILITY_SHEET_NAME') || 'Respuestas de formulario 1';
+  const sheet = SpreadsheetApp.openById(getSpreadsheetId_()).getSheetByName(name);
+  if (!sheet) throw new Error('No existe la hoja de disponibilidades configurada.');
+  return sheet;
+}
+
+function getCompensationsSheet_() {
+  const book = SpreadsheetApp.openById(getSpreadsheetId_());
+  let sheet = book.getSheetByName('Compensatorios');
+  if (sheet) return sheet;
+  sheet = book.insertSheet('Compensatorios');
+  sheet.appendRow(['ID', 'CLAVE_ORIGEN', 'FILA_ORIGEN', 'DOCUMENTO', 'COLABORADOR', 'INICIO_DISPONIBILIDAD', 'FIN_DISPONIBILIDAD', 'FECHA_HISTORICA', 'FECHA_AUTORIZADA', 'ESTADO', 'MOTIVO', 'APROBADO_POR', 'FECHA_REGISTRO']);
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function getImportedSourceKeys_() {
+  const sheet = SpreadsheetApp.openById(getSpreadsheetId_()).getSheetByName('Compensatorios');
+  if (!sheet || sheet.getLastRow() < 2) return new Set();
+  return new Set(sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getDisplayValues().flat().filter(Boolean));
+}
+
+function columnMap_(headers) {
+  const required = ['Marca temporal', 'Escriba su documento de identidad', 'Colaborador', 'Fecha Inicio Disponibilidad', 'Fecha Fin Disponibilidad', 'Fecha para disfrute compensatorio', 'Observaciones'];
+  const map = Object.fromEntries(headers.map((name, index) => [String(name).trim(), index]));
+  required.forEach(name => { if (map[name] === undefined) throw new Error('Falta la columna requerida: ' + name); });
+  return map;
+}
+
+function sourceKey_(row, columns) {
+  return [row[columns['Marca temporal']], row[columns['Escriba su documento de identidad']], row[columns['Fecha Inicio Disponibilidad']], row[columns['Fecha Fin Disponibilidad']]].map(value => String(value).trim()).join('|');
 }
 
 function verifyPin_(pin, salt, expectedHash) { return hashPin_(pin, salt) === expectedHash; }
