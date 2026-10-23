@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASDAL | Ingreso</title>
+  <link rel="stylesheet" href="login.css">
+</head>
+<body>
+  <main class="login-shell">
+    <a class="back" href="index.html">← Volver al portal</a>
+    <section class="login-card" aria-labelledby="title">
+      <div class="mark">ASDAL</div>
+      <p class="eyebrow">ÁREA ADMINISTRATIVA Y OPERATIVA</p>
+      <h1 id="title">Permisos y compensatorios</h1>
+      <p class="intro">Ingresa con tu número de documento y el PIN asignado por administración.</p>
+      <form id="loginForm">
+        <label for="document">Documento de identidad</label>
+        <input id="document" name="document" inputmode="numeric" autocomplete="username" pattern="[0-9]{5,15}" required>
+        <label for="pin">PIN</label>
+        <input id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="12" required>
+        <button type="submit">Ingresar</button>
+      </form>
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+      <aside><strong>¿Olvidaste el PIN?</strong><br>Solicita a la administradora el restablecimiento. No se requiere correo electrónico.</aside>
+    </section>
+  </main>
+  <script src="login.js"></script>
+</body>
+</html>
