@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASDAL | Permisos y compensatorios</title>
+  <link rel="stylesheet" href="permisos.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">ASDAL</a>
+    <div><strong>Permisos y compensatorios</strong><span>Gestión administrativa</span></div>
+    <button id="roleButton" class="user-button" type="button" title="Cambiar vista">Fernando Ramírez · Colaborador</button>
+  </header>
+
+  <main class="layout">
+    <section class="hero">
+      <p class="eyebrow">SOLICITUD DIGITAL</p>
+      <h1>Solicita tu permiso con trazabilidad.</h1>
+      <p>Los compensatorios solo quedan disponibles después de la aprobación administrativa.</p>
+    </section>
+
+    <nav class="tabs" aria-label="Secciones">
+      <button class="tab active" data-panel="request" type="button">Nueva solicitud</button>
+      <button class="tab" data-panel="balances" type="button">Mis compensatorios <span id="availableCount" class="count">0</span></button>
+      <button class="tab admin-only" data-panel="admin" type="button" hidden>Aprobaciones</button>
+    </nav>
+
+    <section id="request" class="panel active">
+      <div class="panel-heading"><div><p class="eyebrow">PASO 1 DE 1</p><h2>Nueva solicitud</h2></div><p class="muted">Los campos marcados con * son obligatorios.</p></div>
+      <form id="requestForm" class="form-grid">
+        <label>Colaborador<input id="employeeName" value="Fernando Ramírez" required></label>
+        <label>Documento<input id="employeeId" value="16361745" inputmode="numeric" required></label>
+        <fieldset class="full"><legend>Tipo de solicitud *</legend><div class="choices">
+          <label><input type="radio" name="type" value="Permiso" checked> Permiso</label>
+          <label><input type="radio" name="type" value="Vacaciones"> Vacaciones</label>
+          <label><input type="radio" name="type" value="Compensatorio"> Compensatorio</label>
+          <label><input type="radio" name="type" value="Capacitación"> Capacitación</label>
+          <label><input type="radio" name="type" value="Otro"> Otro</label>
+        </div></fieldset>
+        <div id="compensatoryBox" class="compensatory-box full" hidden>
+          <h3>Selecciona un compensatorio aprobado</h3>
+          <p>Solo se muestran los derechos aprobados y aún no utilizados.</p>
+          <div id="compensatoryOptions" class="balance-options"></div>
+        </div>
+        <label>Fecha de inicio *<input id="startDate" type="date" required></label>
+        <label>Fecha de finalización *<input id="endDate" type="date" required></label>
+        <label>Unidad de tiempo<select id="timeUnit"><option value="Días">Días</option><option value="Horas">Horas</option></select></label>
+        <label>Cantidad *<input id="amount" type="number" min="1" value="1" required></label>
+        <label class="full">Motivo o descripción *<textarea id="reason" rows="4" required placeholder="Describe brevemente la actividad o causa de la solicitud."></textarea></label>
+        <div class="full form-actions"><button class="primary" type="submit">Enviar solicitud</button></div>
+      </form>
+    </section>
+
+    <section id="balances" class="panel">
+      <div class="panel-heading"><div><p class="eyebrow">SALDOS PERSONALES</p><h2>Mis compensatorios</h2></div></div>
+      <div id="balancesList" class="cards"></div>
+    </section>
+
+    <section id="admin" class="panel admin-only" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">VISTA ADMINISTRATIVA</p><h2>Disponibilidades por decidir</h2></div><p class="muted">La fecha sugerida es el primer miércoles posterior al fin de la disponibilidad.</p></div>
+      <div id="approvalList" class="cards"></div>
+    </section>
+  </main>
+
+  <dialog id="decisionDialog">
+    <form id="decisionForm" method="dialog">
+      <input id="decisionId" type="hidden">
+      <h2 id="decisionTitle">Decidir compensatorio</h2>
+      <p id="decisionDescription" class="muted"></p>
+      <label>Fecha autorizada para disfrute<input id="authorizedDate" type="date" required></label>
+      <label>Observación administrativa<textarea id="adminNote" rows="3" placeholder="Obligatoria si aplaza la fecha."></textarea></label>
+      <div class="dialog-actions"><button type="button" class="secondary" id="cancelDecision">Cancelar</button><button type="submit" class="primary">Guardar decisión</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="permisos.js"></script>
+</body>
+</html>
