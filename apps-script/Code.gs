@@ -1,8 +1,9 @@
 /** Servidor de acceso ASDAL. Desplegar como aplicación web mediante clasp o Apps Script. */
 const SESSION_SECONDS = 60 * 60 * 8;
 
-function doGet() {
-  return HtmlService.createTemplateFromFile('Login').evaluate()
+function doGet(e) {
+  const page = e && e.parameter && e.parameter.view === 'app' ? 'Dashboard' : 'Login';
+  return HtmlService.createTemplateFromFile(page).evaluate()
     .setTitle('ASDAL | Permisos y compensatorios');
 }
 
