@@ -2,8 +2,7 @@
 const SESSION_SECONDS = 60 * 60 * 8;
 
 function doGet(e) {
-  const page = e && e.parameter && e.parameter.view === 'app' ? 'Dashboard' : 'Login';
-  return HtmlService.createTemplateFromFile(page).evaluate()
+  return HtmlService.createTemplateFromFile('Login').evaluate()
     .setTitle('ASDAL | Permisos y compensatorios');
 }
 
