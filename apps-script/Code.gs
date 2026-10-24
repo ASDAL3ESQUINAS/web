@@ -52,6 +52,34 @@ function bootstrapInitialAdministrator() {
   return 'Administrador inicial creado.';
 }
 
+/**
+ * Asigna un PIN protegido a un administrador existente que aún no tiene PIN.
+ * Configure ADMIN_SETUP_DOCUMENT y ADMIN_SETUP_PIN como propiedades temporales
+ * y ejecútela desde el editor de Apps Script. No altera nombres, roles ni estado.
+ */
+function initializeExistingAdministratorPin() {
+  const properties = PropertiesService.getScriptProperties();
+  const documentNumber = String(properties.getProperty('ADMIN_SETUP_DOCUMENT') || '').replace(/\D/g, '');
+  const pin = String(properties.getProperty('ADMIN_SETUP_PIN') || '');
+  if (!/^\d{5,15}$/.test(documentNumber) || !/^\d{4,12}$/.test(pin)) throw new Error('Configure ADMIN_SETUP_DOCUMENT y ADMIN_SETUP_PIN antes de ejecutar.');
+  const sheet = getUsersSheet_();
+  const rows = sheet.getDataRange().getDisplayValues();
+  const columns = columnMapForUsers_(rows.shift());
+  const rowOffset = rows.findIndex(row => row[columns.Documento] === documentNumber);
+  if (rowOffset < 0) throw new Error('El documento no está registrado en Usuarios.');
+  const row = rows[rowOffset];
+  if (!isAdministrator_({ role: row[columns.Rol] })) throw new Error('El usuario indicado no tiene rol Administrador.');
+  if (String(row[columns.PIN_HASH] || '').trim()) throw new Error('Este administrador ya tiene un PIN configurado.');
+  const salt = Utilities.getUuid();
+  const rowNumber = rowOffset + 2;
+  sheet.getRange(rowNumber, columns.PIN_HASH + 1).setValue(hashPin_(pin, salt));
+  sheet.getRange(rowNumber, columns.PIN_SALT + 1).setValue(salt);
+  sheet.getRange(rowNumber, columns.CAMBIAR_PIN + 1).setValue('No');
+  properties.deleteProperty('ADMIN_SETUP_DOCUMENT');
+  properties.deleteProperty('ADMIN_SETUP_PIN');
+  return 'PIN de administrador configurado.';
+}
+
 function getSession(token) {
   const raw = CacheService.getScriptCache().get('session:' + token);
   return raw ? { ok: true, user: JSON.parse(raw) } : { ok: false };

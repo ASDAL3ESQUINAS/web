@@ -18,3 +18,7 @@ Solo pueden importar usuarios con rol `Administrador` o `Junta directiva`. Cada 
 2. En **Configuración del proyecto → Propiedades de secuencia de comandos**, agregue `SPREADSHEET_ID` con el ID de la hoja.
 3. Agregue temporalmente tres propiedades: `INITIAL_ADMIN_DOCUMENT`, `INITIAL_ADMIN_NAME` y `INITIAL_ADMIN_PIN`. Elija un PIN de 4 a 12 dígitos. Desde el editor, ejecute una única vez `bootstrapInitialAdministrator`. La función elimina esas tres propiedades al terminar y se bloquea automáticamente cuando ya existe un usuario.
 4. Despliegue la aplicación web para que se ejecute como usted y entregue la URL `/exec` a los usuarios.
+
+## PIN para administradores existentes
+
+Para cada administrador que ya esté en `Usuarios`, agregue temporalmente `ADMIN_SETUP_DOCUMENT` y `ADMIN_SETUP_PIN` en las propiedades del script. Ejecute `initializeExistingAdministratorPin` desde el editor. La función solo admite documentos con rol `Administrador`, no modifica las demás columnas y borra las dos propiedades al terminar. Repita el proceso para el segundo administrador.
