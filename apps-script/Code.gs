@@ -3,8 +3,7 @@ const SESSION_SECONDS = 60 * 60 * 8;
 
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('Login')
-    .setTitle('ASDAL | Permisos y compensatorios')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY);
+    .setTitle('ASDAL | Permisos y compensatorios');
 }
 
 function startLogin(documentNumber) {
