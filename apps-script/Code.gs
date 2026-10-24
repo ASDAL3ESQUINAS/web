@@ -7,19 +7,27 @@ function doGet() {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DENY);
 }
 
-function login(documentNumber, pin) {
+function startLogin(documentNumber) {
   const normalizedDocument = String(documentNumber || '').replace(/\D/g, '');
-  if (!/^\d{5,15}$/.test(normalizedDocument) || !/^\d{4,12}$/.test(String(pin || ''))) {
-    return { ok: false, message: 'Documento o PIN inválido.' };
+  if (!/^\d{5,15}$/.test(normalizedDocument)) {
+    return { ok: false, message: 'Documento no autorizado.' };
   }
   const user = findUser_(normalizedDocument);
-  if (!user || !user.active || !verifyPin_(String(pin), user.salt, user.pinHash)) {
+  if (!user || !user.active) {
     registerAttempt_(normalizedDocument);
+    return { ok: false, message: 'Documento no autorizado.' };
+  }
+  if (isAdministrator_(user)) return { ok: false, requiresPin: true, message: 'Ingresa el PIN de administrador.' };
+  return createSession_(user);
+}
+
+function loginAdministrator(documentNumber, pin) {
+  const user = findUser_(String(documentNumber || '').replace(/\D/g, ''));
+  if (!user || !user.active || !isAdministrator_(user) || !/^\d{4,12}$/.test(String(pin || '')) || !verifyPin_(String(pin), user.salt, user.pinHash)) {
+    registerAttempt_(String(documentNumber || ''));
     return { ok: false, message: 'Documento o PIN inválido.' };
   }
-  const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
-  CacheService.getScriptCache().put('session:' + token, JSON.stringify({ document: user.document, name: user.name, role: user.role }), SESSION_SECONDS);
-  return { ok: true, token: token, mustChangePin: user.mustChangePin, user: { name: user.name, role: user.role } };
+  return createSession_(user);
 }
 
 function getSession(token) {
@@ -28,6 +36,40 @@ function getSession(token) {
 }
 
 function logout(token) { CacheService.getScriptCache().remove('session:' + token); return { ok: true }; }
+
+function listUsers(token) {
+  requireAdministrator_(token);
+  const sheet = getUsersSheet_();
+  const rows = sheet.getDataRange().getDisplayValues();
+  const index = columnMapForUsers_(rows.shift());
+  return rows.filter(row => row[index.Documento]).map(row => ({ document: row[index.Documento], name: row[index.Nombre], role: row[index.Rol], active: String(row[index.Activo]).toLowerCase() === 'si' }));
+}
+
+/** Crea un usuario autorizado. Si es administrador, devuelve un PIN temporal una sola vez. */
+function createUser(token, documentNumber, name, role) {
+  requireAdministrator_(token);
+  const document = String(documentNumber || '').replace(/\D/g, '');
+  const cleanName = String(name || '').trim().toUpperCase();
+  if (!/^\d{5,15}$/.test(document) || cleanName.length < 3 || !['Colaborador', 'Administrador'].includes(role)) throw new Error('Datos de usuario inválidos.');
+  const sheet = getUsersSheet_();
+  const users = listUsers(token);
+  if (users.some(user => user.document === document)) throw new Error('El documento ya está registrado.');
+  const temporaryPin = role === 'Administrador' ? generatePin_() : '';
+  const salt = role === 'Administrador' ? Utilities.getUuid() : '';
+  sheet.appendRow([document, cleanName, role, role === 'Administrador' ? hashPin_(temporaryPin, salt) : '', salt, 'Si', role === 'Administrador' ? 'Si' : 'No']);
+  return { ok: true, temporaryPin: temporaryPin };
+}
+
+function setUserActive(token, documentNumber, active) {
+  requireAdministrator_(token);
+  const sheet = getUsersSheet_();
+  const rows = sheet.getDataRange().getDisplayValues();
+  const index = columnMapForUsers_(rows.shift());
+  const rowIndex = rows.findIndex(row => row[index.Documento] === String(documentNumber));
+  if (rowIndex < 0) throw new Error('Usuario no encontrado.');
+  sheet.getRange(rowIndex + 2, index.Activo + 1).setValue(active ? 'Si' : 'No');
+  return { ok: true };
+}
 
 /** Lee únicamente las disponibilidades cuyo campo Observaciones está vacío. */
 function getPendingAvailabilities(token) {
@@ -67,14 +109,38 @@ function importPendingAvailabilities(token, sourceKeys) {
 }
 
 function findUser_(documentNumber) {
-  const sheet = SpreadsheetApp.openById(getSpreadsheetId_()).getSheetByName('Usuarios');
-  if (!sheet) throw new Error('No existe la hoja Usuarios.');
+  const sheet = getUsersSheet_();
   const rows = sheet.getDataRange().getDisplayValues();
   const headers = rows.shift();
   const index = Object.fromEntries(headers.map((header, position) => [header, position]));
   const row = rows.find(values => values[index.Documento] === documentNumber);
   if (!row) return null;
   return { document: row[index.Documento], name: row[index.Nombre], role: row[index.Rol], pinHash: row[index.PIN_HASH], salt: row[index.PIN_SALT], active: String(row[index.Activo]).toLowerCase() === 'si', mustChangePin: String(row[index.CAMBIAR_PIN]).toLowerCase() === 'si' };
+}
+
+function createSession_(user) {
+  const token = Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+  CacheService.getScriptCache().put('session:' + token, JSON.stringify({ document: user.document, name: user.name, role: user.role }), SESSION_SECONDS);
+  return { ok: true, token: token, mustChangePin: user.mustChangePin, user: { name: user.name, role: user.role } };
+}
+
+function isAdministrator_(user) { return ['Administrador', 'Junta directiva'].includes(user.role); }
+
+function getUsersSheet_() {
+  const book = SpreadsheetApp.openById(getSpreadsheetId_());
+  let sheet = book.getSheetByName('Usuarios');
+  if (sheet) return sheet;
+  sheet = book.insertSheet('Usuarios');
+  sheet.appendRow(['Documento', 'Nombre', 'Rol', 'PIN_HASH', 'PIN_SALT', 'Activo', 'CAMBIAR_PIN']);
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function columnMapForUsers_(headers) {
+  const required = ['Documento', 'Nombre', 'Rol', 'PIN_HASH', 'PIN_SALT', 'Activo', 'CAMBIAR_PIN'];
+  const map = Object.fromEntries(headers.map((name, index) => [String(name).trim(), index]));
+  required.forEach(name => { if (map[name] === undefined) throw new Error('Falta la columna requerida: ' + name); });
+  return map;
 }
 
 function requireAdministrator_(token) {
@@ -123,6 +189,7 @@ function hashPin_(pin, salt) {
   for (let i = 0; i < 50000; i++) value = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value));
   return value;
 }
+function generatePin_() { return (Utilities.getUuid() + Utilities.getUuid()).replace(/\D/g, '').slice(0, 6); }
 function registerAttempt_(documentNumber) { CacheService.getScriptCache().put('attempt:' + documentNumber, String(Date.now()), 60); }
 function getSpreadsheetId_() {
   const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');

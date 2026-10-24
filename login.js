@@ -5,21 +5,24 @@ form.addEventListener('submit', event => {
   message.textContent = '';
   const documentNumber = form.document.value.trim();
   const pin = form.pin.value;
-  if (!/^\d{5,15}$/.test(documentNumber) || !/^\d{4,12}$/.test(pin)) {
-    message.textContent = 'Revisa el documento y el PIN ingresados.';
+  const needsPin = !document.getElementById('pinField').hidden;
+  if (!/^\d{5,15}$/.test(documentNumber) || (needsPin && !/^\d{4,12}$/.test(pin))) {
+    message.textContent = 'Revisa los datos ingresados.';
     return;
   }
   if (!window.google?.script?.run) {
     message.textContent = 'El acceso aún debe activarse en Google Apps Script. Administración debe completar la configuración.';
     return;
   }
-  form.querySelector('button').disabled = true;
-  google.script.run
-    .withSuccessHandler(result => {
-      if (!result.ok) { message.textContent = result.message; form.querySelector('button').disabled = false; return; }
-      sessionStorage.setItem('asdalSession', result.token);
-      window.location.href = result.mustChangePin ? '?view=change-pin' : '?view=app';
-    })
-    .withFailureHandler(() => { message.textContent = 'No fue posible ingresar. Intenta nuevamente.'; form.querySelector('button').disabled = false; })
-    .login(documentNumber, pin);
+  const button = form.querySelector('button');
+  button.disabled = true;
+  const handleResult = result => {
+    button.disabled = false;
+    if (result.requiresPin) { document.getElementById('pinField').hidden = false; document.getElementById('pin').required = true; message.textContent = result.message; return; }
+    if (!result.ok) { message.textContent = result.message; return; }
+    sessionStorage.setItem('asdalSession', result.token);
+    window.location.href = result.mustChangePin ? '?view=change-pin' : '?view=app';
+  };
+  const request = google.script.run.withSuccessHandler(handleResult).withFailureHandler(() => { message.textContent = 'No fue posible ingresar. Intenta nuevamente.'; button.disabled = false; });
+  if (needsPin) request.loginAdministrator(documentNumber, pin); else request.startLogin(documentNumber);
 });
