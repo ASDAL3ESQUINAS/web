@@ -11,3 +11,10 @@ No suba PINs, hashes, claves ni el identificador de la hoja al repositorio. La a
 `getPendingAvailabilities(token)` solo lee filas de `Respuestas de formulario 1` cuya columna `Observaciones` esté vacía. `importPendingAvailabilities(token, sourceKeys)` crea registros en `Compensatorios` y nunca escribe en la pestaña histórica. La columna `CLAVE_ORIGEN` impide importar dos veces la misma disponibilidad.
 
 Solo pueden importar usuarios con rol `Administrador` o `Junta directiva`. Cada registro nuevo inicia con estado `Pendiente de aprobación`.
+
+## Activación inicial
+
+1. Cree un proyecto Apps Script vinculado a la hoja y copie los archivos de esta carpeta.
+2. En **Configuración del proyecto → Propiedades de secuencia de comandos**, agregue `SPREADSHEET_ID` con el ID de la hoja.
+3. Agregue temporalmente tres propiedades: `INITIAL_ADMIN_DOCUMENT`, `INITIAL_ADMIN_NAME` y `INITIAL_ADMIN_PIN`. Elija un PIN de 4 a 12 dígitos. Desde el editor, ejecute una única vez `bootstrapInitialAdministrator`. La función elimina esas tres propiedades al terminar y se bloquea automáticamente cuando ya existe un usuario.
+4. Despliegue la aplicación web para que se ejecute como usted y entregue la URL `/exec` a los usuarios.

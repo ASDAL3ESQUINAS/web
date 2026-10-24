@@ -30,6 +30,28 @@ function loginAdministrator(documentNumber, pin) {
   return createSession_(user);
 }
 
+/**
+ * Ejecutar una sola vez, desde el editor de Apps Script y antes del despliegue.
+ * Luego deja de funcionar en cuanto existe el primer usuario.
+ */
+function bootstrapInitialAdministrator() {
+  const sheet = getUsersSheet_();
+  if (sheet.getLastRow() > 1) throw new Error('Ya existe al menos un usuario. Use la administración normal.');
+  const properties = PropertiesService.getScriptProperties();
+  const documentNumber = properties.getProperty('INITIAL_ADMIN_DOCUMENT');
+  const name = properties.getProperty('INITIAL_ADMIN_NAME');
+  const pin = properties.getProperty('INITIAL_ADMIN_PIN');
+  const document = String(documentNumber || '').replace(/\D/g, '');
+  const cleanName = String(name || '').trim().toUpperCase();
+  if (!/^\d{5,15}$/.test(document) || cleanName.length < 3 || !/^\d{4,12}$/.test(String(pin || ''))) throw new Error('Datos iniciales inválidos.');
+  const salt = Utilities.getUuid();
+  sheet.appendRow([document, cleanName, 'Administrador', hashPin_(String(pin), salt), salt, 'Si', 'No']);
+  properties.deleteProperty('INITIAL_ADMIN_DOCUMENT');
+  properties.deleteProperty('INITIAL_ADMIN_NAME');
+  properties.deleteProperty('INITIAL_ADMIN_PIN');
+  return 'Administrador inicial creado.';
+}
+
 function getSession(token) {
   const raw = CacheService.getScriptCache().get('session:' + token);
   return raw ? { ok: true, user: JSON.parse(raw) } : { ok: false };
