@@ -21,15 +21,16 @@ function startLogin(documentNumber) {
 }
 
 function loginAdministrator(documentNumber, pin) {
-  const user = findUser_(String(documentNumber || '').replace(/\D/g, ''));
+  const normalizedDocument = String(documentNumber || '').replace(/\D/g, '');
+  if (isTemporarilyBlocked_(normalizedDocument)) return { ok: false, message: 'Por seguridad, espera 15 minutos antes de intentar nuevamente.' };
+  const user = findUser_(normalizedDocument);
   if (!user || !user.active || !isAdministrator_(user) || !/^\d{4,12}$/.test(String(pin || '')) || !verifyPin_(String(pin), user.salt, user.pinHash)) {
-    registerAttempt_(String(documentNumber || ''));
+    registerAttempt_(normalizedDocument);
     return { ok: false, message: 'Documento o PIN inválido.' };
   }
-  // Los PIN creados en la primera versión usaban 50.000 ciclos y hacían que
-  // Apps Script tardara medio minuto. Tras un acceso válido se actualizan una
-  // sola vez al formato actual, sin pedirle al administrador cambiar su PIN.
-  if (!String(user.pinHash).startsWith('v2:')) updatePinHash_(user.rowNumber, String(pin), user.salt);
+  clearAttempts_(normalizedDocument);
+  // Se actualiza el formato al validar correctamente, sin cambiar el PIN.
+  if (!String(user.pinHash).startsWith('v3:')) updatePinHash_(user.rowNumber, String(pin), user.salt);
   return createSession_(user);
 }
 
@@ -244,9 +245,15 @@ function updatePinHash_(rowNumber, pin, salt) {
 
 function verifyPin_(pin, salt, expectedHash) {
   const stored = String(expectedHash || '');
-  return stored.startsWith('v2:') ? hashPin_(pin, salt) === stored : legacyHashPin_(pin, salt) === stored;
+  if (stored.startsWith('v3:')) return hashPin_(pin, salt) === stored;
+  if (stored.startsWith('v2:')) return v2HashPin_(pin, salt) === stored;
+  return legacyHashPin_(pin, salt) === stored;
 }
 function hashPin_(pin, salt) {
+  const value = String(salt) + ':' + String(pin);
+  return 'v3:' + Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value));
+}
+function v2HashPin_(pin, salt) {
   let value = String(salt) + ':' + String(pin);
   for (let i = 0; i < 5000; i++) value = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value));
   return 'v2:' + value;
@@ -257,7 +264,25 @@ function legacyHashPin_(pin, salt) {
   return value;
 }
 function generatePin_() { return (Utilities.getUuid() + Utilities.getUuid()).replace(/\D/g, '').slice(0, 6); }
-function registerAttempt_(documentNumber) { CacheService.getScriptCache().put('attempt:' + documentNumber, String(Date.now()), 60); }
+function isTemporarilyBlocked_(documentNumber) {
+  return CacheService.getScriptCache().get('blocked:' + documentNumber) === '1';
+}
+function registerAttempt_(documentNumber) {
+  const cache = CacheService.getScriptCache();
+  const key = 'attempts:' + documentNumber;
+  const attempts = Number(cache.get(key) || 0) + 1;
+  if (attempts >= 5) {
+    cache.put('blocked:' + documentNumber, '1', 15 * 60);
+    cache.remove(key);
+    return;
+  }
+  cache.put(key, String(attempts), 10 * 60);
+}
+function clearAttempts_(documentNumber) {
+  const cache = CacheService.getScriptCache();
+  cache.remove('attempts:' + documentNumber);
+  cache.remove('blocked:' + documentNumber);
+}
 function getSpreadsheetId_() {
   const id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
   if (!id) throw new Error('Falta configurar SPREADSHEET_ID en Propiedades del script.');
