@@ -26,6 +26,10 @@ function loginAdministrator(documentNumber, pin) {
     registerAttempt_(String(documentNumber || ''));
     return { ok: false, message: 'Documento o PIN inválido.' };
   }
+  // Los PIN creados en la primera versión usaban 50.000 ciclos y hacían que
+  // Apps Script tardara medio minuto. Tras un acceso válido se actualizan una
+  // sola vez al formato actual, sin pedirle al administrador cambiar su PIN.
+  if (!String(user.pinHash).startsWith('v2:')) updatePinHash_(user.rowNumber, String(pin), user.salt);
   return createSession_(user);
 }
 
@@ -164,7 +168,7 @@ function findUser_(documentNumber) {
   const index = Object.fromEntries(headers.map((header, position) => [header, position]));
   const row = rows.find(values => values[index.Documento] === documentNumber);
   if (!row) return null;
-  return { document: row[index.Documento], name: row[index.Nombre], role: row[index.Rol], pinHash: row[index.PIN_HASH], salt: row[index.PIN_SALT], active: String(row[index.Activo]).toLowerCase() === 'si', mustChangePin: String(row[index.CAMBIAR_PIN]).toLowerCase() === 'si' };
+  return { document: row[index.Documento], name: row[index.Nombre], role: row[index.Rol], pinHash: row[index.PIN_HASH], salt: row[index.PIN_SALT], active: String(row[index.Activo]).toLowerCase() === 'si', mustChangePin: String(row[index.CAMBIAR_PIN]).toLowerCase() === 'si', rowNumber: rows.indexOf(row) + 2 };
 }
 
 function createSession_(user) {
@@ -232,8 +236,22 @@ function sourceKey_(row, columns) {
   return [row[columns['Marca temporal']], row[columns['Escriba su documento de identidad']], row[columns['Fecha Inicio Disponibilidad']], row[columns['Fecha Fin Disponibilidad']]].map(value => String(value).trim()).join('|');
 }
 
-function verifyPin_(pin, salt, expectedHash) { return hashPin_(pin, salt) === expectedHash; }
+function updatePinHash_(rowNumber, pin, salt) {
+  const sheet = getUsersSheet_();
+  const index = columnMapForUsers_(sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0]);
+  sheet.getRange(rowNumber, index.PIN_HASH + 1).setValue(hashPin_(pin, salt));
+}
+
+function verifyPin_(pin, salt, expectedHash) {
+  const stored = String(expectedHash || '');
+  return stored.startsWith('v2:') ? hashPin_(pin, salt) === stored : legacyHashPin_(pin, salt) === stored;
+}
 function hashPin_(pin, salt) {
+  let value = String(salt) + ':' + String(pin);
+  for (let i = 0; i < 5000; i++) value = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value));
+  return 'v2:' + value;
+}
+function legacyHashPin_(pin, salt) {
   let value = String(salt) + ':' + String(pin);
   for (let i = 0; i < 50000; i++) value = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, value));
   return value;
